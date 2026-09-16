@@ -2,39 +2,31 @@
 Модуль захвата сетевого трафика.
 Использует Scapy для перехвата пакетов с указанного интерфейса.
 
-Поддерживает два режима:
-  - вывод пакетов в консоль в реальном времени;
-  - сохранение захваченных пакетов в .pcap-файл для дальнейшего анализа.
+Поддерживает:
+  - вывод пакетов в консоль в реальном времени (verbose=True);
+  - передачу каждого IP-пакета внешнему обработчику через on_packet;
+  - сохранение захваченных пакетов в .pcap-файл.
 """
 
 from scapy.all import ICMP, IP, TCP, UDP, sniff, wrpcap
 
 from config import CAPTURE_FILTER, CAPTURE_INTERFACE
 
-# Буфер для пакетов, которые нужно сохранить в pcap.
-# Хранит только те пакеты, что прошли фильтр и были захвачены в текущей сессии.
 _captured_packets = []
 
 
-def packet_callback(packet):
-    """
-    Функция-обработчик, вызываемая для каждого захваченного пакета.
-    Выводит краткую информацию в консоль и складывает пакет в буфер.
-    """
-    if IP not in packet:
-        return
-
-    # Складываем в буфер для последующего сохранения в pcap.
-    _captured_packets.append(packet)
-
+def _print_packet(packet):
+    """Краткий вывод информации о пакете в консоль."""
     ip_layer = packet[IP]
     proto = "OTHER"
     info = ""
 
     if TCP in packet:
         proto = "TCP"
-        flags = packet[TCP].flags
-        info = f"sport={packet[TCP].sport} dport={packet[TCP].dport} flags={flags}"
+        info = (
+            f"sport={packet[TCP].sport} dport={packet[TCP].dport} "
+            f"flags={packet[TCP].flags}"
+        )
     elif UDP in packet:
         proto = "UDP"
         info = f"sport={packet[UDP].sport} dport={packet[UDP].dport}"
@@ -49,29 +41,25 @@ def packet_callback(packet):
 
 
 def save_pcap(path: str):
-    """
-    Сохраняет накопленные пакеты в .pcap-файл.
-
-    Args:
-        path: путь к файлу (например, "data/normal_traffic.pcap").
-              Родительская папка должна существовать.
-    """
+    """Сохраняет накопленные пакеты в .pcap-файл."""
     if not _captured_packets:
         print("Нет пакетов для сохранения — файл не создан.")
         return
-
     wrpcap(path, _captured_packets)
     print(f"\nСохранено {len(_captured_packets)} пакетов в {path}")
 
 
-def start_sniffing(count: int = 0, save_to: str | None = None):
+def start_sniffing(
+    count: int = 0, save_to: str | None = None, on_packet=None, verbose: bool = False
+):
     """
     Запускает захват трафика.
 
     Args:
-        count: количество пакетов для захвата (0 = бесконечно).
-        save_to: путь к .pcap-файлу. Если None — пакеты не сохраняются.
-                 Файл записывается по завершении захвата (в т.ч. по Ctrl+C).
+        count: количество пакетов (0 = бесконечно).
+        save_to: путь к .pcap-файлу. None — не сохранять.
+        on_packet: callback(packet), вызывается для каждого IP-пакета.
+        verbose: печатать ли каждый пакет в консоль.
     """
     print(f"Захват на интерфейсе: {CAPTURE_INTERFACE or 'default'}")
     print(f"Фильтр: {CAPTURE_FILTER}")
@@ -81,16 +69,23 @@ def start_sniffing(count: int = 0, save_to: str | None = None):
 
     _captured_packets.clear()
 
+    def _callback(packet):
+        if IP not in packet:
+            return
+        _captured_packets.append(packet)
+        if verbose:
+            _print_packet(packet)
+        if on_packet is not None:
+            on_packet(packet)
+
     try:
         sniff(
             iface=CAPTURE_INTERFACE,
             filter=CAPTURE_FILTER,
-            prn=packet_callback,
-            store=False,  # не храним пакеты в памяти Scapy — только в своём буфере
+            prn=_callback,
+            store=False,
             count=count,
         )
     finally:
-        # finally сработает и при нормальном завершении, и при Ctrl+C.
-        # Так мы не потеряем захваченные пакеты, если остановимся вручную.
         if save_to:
             save_pcap(save_to)

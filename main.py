@@ -1,23 +1,49 @@
 """
 Точка входа приложения для анализа сетевого трафика.
-Запускает захват пакетов и выводит их в консоль.
+
+Запускает:
+  - фоновую агрегацию метрик;
+  - захват пакетов;
+  - правила детекции аномалий;
+  - запись результатов в SQLite.
 """
 
 import sys
 
+from analysis.detector import TrafficAggregator
+from analysis.features import extract_features
 from capture.sniffer import start_sniffing
+from storage.database import init_db
 
 
 def main():
-    print("=" * 70)
-    print("  DDoS Traffic Analyzer — прототип (захват трафика)")
-    print("=" * 70)
+    print("=" * 78)
+    print("  DDoS Traffic Analyzer — этап A: агрегация метрик и детекция")
+    print("=" * 78)
 
-    # count=20 — захватим 20 пакетов и остановимся.
-    # Для бесконечного захвата передайте count=0.
-    start_sniffing(count=500, save_to="data/normal_traffic.pcap")
+    init_db()
 
-    print("\nЗахват завершён.")
+    aggregator = TrafficAggregator()
+
+    def on_packet(packet):
+        features = extract_features(packet)
+        if features:
+            aggregator.add_packet(features)
+
+    aggregator.start()
+    print("Агрегация метрик запущена (сводка раз в секунду).\n")
+
+    try:
+        start_sniffing(
+            count=0,  # бесконечный захват
+            save_to="data/capture.pcap",
+            on_packet=on_packet,
+            verbose=False,  # не печатать каждый пакет
+        )
+    finally:
+        print("\nОстанавливаю агрегатор...")
+        aggregator.stop()
+        print("Готово.")
 
 
 if __name__ == "__main__":

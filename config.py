@@ -4,9 +4,9 @@
 """
 
 # --- Сетевые настройки ---
-CAPTURE_INTERFACE = r"\Device\NPF_{635E3D4A-FA0F-4C3B-AC07-4F8B3EA13674}"
+CAPTURE_INTERFACE = r"\Device\NPF_{2CF04406-0C9E-4C71-B0C0-3B7500F51A3F}"
 
-CAPTURE_FILTER = "(tcp or udp port 53 or icmp) and not port 8886"
+CAPTURE_FILTER = "icmp or tcp or udp"
 
 # --- Настройки агрегации ---
 # Раз в сколько секунд агрегатор сбрасывает счётчики и печатает сводку.

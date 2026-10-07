@@ -8,7 +8,9 @@
   - сохранение захваченных пакетов в .pcap-файл.
 """
 
-from scapy.all import ICMP, IP, TCP, UDP, sniff, wrpcap
+import time
+
+from scapy.all import ICMP, IP, TCP, UDP, AsyncSniffer, wrpcap
 
 from config import CAPTURE_FILTER, CAPTURE_INTERFACE
 
@@ -53,13 +55,10 @@ def start_sniffing(
     count: int = 0, save_to: str | None = None, on_packet=None, verbose: bool = False
 ):
     """
-    Запускает захват трафика.
+    Запускает захват трафика через AsyncSniffer.
 
-    Args:
-        count: количество пакетов (0 = бесконечно).
-        save_to: путь к .pcap-файлу. None — не сохранять.
-        on_packet: callback(packet), вызывается для каждого IP-пакета.
-        verbose: печатать ли каждый пакет в консоль.
+    AsyncSniffer работает в фоновом потоке, поэтому Ctrl+C
+    обрабатывается мгновенно, а не ждёт следующего пакета.
     """
     print(f"Захват на интерфейсе: {CAPTURE_INTERFACE or 'default'}")
     print(f"Фильтр: {CAPTURE_FILTER}")
@@ -78,14 +77,23 @@ def start_sniffing(
         if on_packet is not None:
             on_packet(packet)
 
+    sniffer = AsyncSniffer(
+        iface=CAPTURE_INTERFACE,
+        filter=CAPTURE_FILTER,
+        prn=_callback,
+        store=False,
+        count=count,
+    )
+    sniffer.start()
+
     try:
-        sniff(
-            iface=CAPTURE_INTERFACE,
-            filter=CAPTURE_FILTER,
-            prn=_callback,
-            store=False,
-            count=count,
-        )
+        # Главный поток спит, но мгновенно реагирует на Ctrl+C
+        while sniffer.running:
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        print("\nОстанавливаю захват...")
     finally:
+        if sniffer.running:
+            sniffer.stop()
         if save_to:
             save_pcap(save_to)

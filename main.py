@@ -42,7 +42,7 @@ def parse_args():
         "--duration",
         type=int,
         default=0,
-        help="Длительность захвата в секундах (0 = бесконечно)",
+        help="Длительность захвата в секундах (0 = без ограничения)",
     )
     parser.add_argument(
         "--no-save",
@@ -103,7 +103,8 @@ def main():
 
     try:
         start_sniffing(
-            count=args.duration,
+            count=0,  # без лимита по пакетам
+            duration=args.duration,  # лимит по времени (в секундах)
             save_to=save_to,
             on_packet=on_packet,
             verbose=args.verbose,

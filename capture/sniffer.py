@@ -8,6 +8,7 @@
   - сохранение захваченных пакетов в .pcap-файл.
 """
 
+import threading
 import time
 
 from scapy.all import ICMP, IP, TCP, UDP, AsyncSniffer, wrpcap
@@ -52,16 +53,28 @@ def save_pcap(path: str):
 
 
 def start_sniffing(
-    count: int = 0, save_to: str | None = None, on_packet=None, verbose: bool = False
+    count: int = 0,
+    duration: int = 0,
+    save_to=None,
+    on_packet=None,
+    verbose: bool = False,
 ):
     """
     Запускает захват трафика через AsyncSniffer.
 
-    AsyncSniffer работает в фоновом потоке, поэтому Ctrl+C
-    обрабатывается мгновенно, а не ждёт следующего пакета.
+    Args:
+        count:    остановиться после N пакетов (0 = без ограничения).
+        duration: остановиться через N секунд (0 = без ограничения).
+        save_to:  путь к .pcap-файлу.
+        on_packet: callback(packet) для каждого IP-пакета.
+        verbose:  печатать ли каждый пакет.
     """
     print(f"Захват на интерфейсе: {CAPTURE_INTERFACE or 'default'}")
     print(f"Фильтр: {CAPTURE_FILTER}")
+    if duration:
+        print(f"Длительность: {duration} сек")
+    if count:
+        print(f"Лимит пакетов: {count}")
     if save_to:
         print(f"Сохранение в: {save_to}")
     print("Нажмите Ctrl+C для остановки.\n")
@@ -86,13 +99,21 @@ def start_sniffing(
     )
     sniffer.start()
 
+    # Таймер остановки по времени
+    timer = None
+    if duration > 0:
+        timer = threading.Timer(duration, sniffer.stop)
+        timer.daemon = True
+        timer.start()
+
     try:
-        # Главный поток спит, но мгновенно реагирует на Ctrl+C
         while sniffer.running:
             time.sleep(0.3)
     except KeyboardInterrupt:
-        print("\nОстанавливаю захват...")
+        print("\nОстанавливаю захват (Ctrl+C)...")
     finally:
+        if timer is not None:
+            timer.cancel()
         if sniffer.running:
             sniffer.stop()
         if save_to:

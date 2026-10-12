@@ -17,11 +17,20 @@ from datetime import datetime
 from config import AGGREGATION_INTERVAL, THRESHOLDS
 from storage.database import save_alert, save_metrics
 
+_THREAT_SYMBOLS = {
+    "green": "🟢",
+    "yellow": "🟡",
+    "red": "🔴",
+}
+
 
 class TrafficAggregator:
     """Потокобезопасный агрегатор метрик с периодическим сбросом."""
 
-    def __init__(self):
+    def __init__(self, output_fields=None):
+        from config import OUTPUT_FIELDS
+
+        self.output_fields = output_fields or OUTPUT_FIELDS
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread = None
@@ -146,21 +155,75 @@ class TrafficAggregator:
 
         return alerts
 
+    def _threat_level(self, metrics: dict, alerts: list) -> str:
+        """
+        Определяет уровень угрозы по метрикам и алертам:
+        🟢 green  — норма
+        🟡 yellow — внимание (есть алерты или метрики близки к порогу)
+        🔴 red    — атака (много алертов или превышение порогов)
+        """
+        from config import THREAT_LEVEL, THRESHOLDS
+
+        # Красный: много алертов
+        if len(alerts) >= THREAT_LEVEL["red_alerts"]:
+            return "red"
+
+        # Жёлтый: есть алерты
+        if len(alerts) >= THREAT_LEVEL["yellow_alerts"]:
+            return "yellow"
+
+        # Проверяем, насколько метрики близки к порогам
+        ratios = []
+        if THRESHOLDS["pps_per_ip"] > 0:
+            ratios.append(metrics["top_src_pps"] / THRESHOLDS["pps_per_ip"])
+        if THRESHOLDS["syn_ratio"] > 0 and metrics["tcp_total"] >= 10:
+            ratios.append(metrics["syn_ratio"] / THRESHOLDS["syn_ratio"])
+        if THRESHOLDS["udp_flood_pps"] > 0 and metrics["top_udp_pps"] > 0:
+            ratios.append(metrics["top_udp_pps"] / THRESHOLDS["udp_flood_pps"])
+
+        if ratios and max(ratios) >= THREAT_LEVEL["yellow_ratio"]:
+            return "yellow"
+
+        return "green"
+
+    def _format_metrics(self, metrics: dict, level: str) -> str:
+        """Формирует строку сводки по выбранным пользователем полям."""
+        from config import SHOW_THREAT_LEVEL
+
+        parts = []
+        for field in self.output_fields:
+            if field == "time":
+                parts.append(metrics["timestamp"].strftime("%H:%M:%S"))
+            elif field == "pps":
+                parts.append(f"PPS={metrics['total_pps']:>7.1f}")
+            elif field == "bps":
+                parts.append(f"BPS={metrics['total_bps'] / 1024:>8.1f}KB/s")
+            elif field == "syn":
+                parts.append(f"SYN={metrics['syn_ratio']:>5.1%}")
+            elif field == "uniq":
+                parts.append(f"uniq={metrics['unique_src_ips']:>3}")
+            elif field == "top":
+                top = metrics["top_src_ip"] or "-"
+                parts.append(f"top={top:<15} ({metrics['top_src_pps']:.1f}pps)")
+            elif field == "udp":
+                port = metrics["top_udp_port"] or "-"
+                parts.append(f"udp={port} ({metrics['top_udp_pps']:.1f}pps)")
+
+        prefix = ""
+        if SHOW_THREAT_LEVEL:
+            prefix = f"[{_THREAT_SYMBOLS[level]}] "
+
+        return f"{prefix}[{' | '.join(parts)}]"
+
     # ---------- Вывод и запись ----------
 
     def _report(self, metrics: dict, alerts: list):
         """Печатает сводку и алерты, сохраняет в БД."""
-        ts = metrics["timestamp"].strftime("%H:%M:%S")
-        print(
-            f"[{ts}] "
-            f"PPS={metrics['total_pps']:>7.1f} | "
-            f"BPS={metrics['total_bps'] / 1024:>8.1f} KB/s | "
-            f"SYN={metrics['syn_ratio']:>5.1%} | "
-            f"uniq={metrics['unique_src_ips']:>3} | "
-            f"top={metrics['top_src_ip'] or '-':<15} "
-            f"({metrics['top_src_pps']:.1f} pps)"
-        )
+        level = self._threat_level(metrics, alerts)
+        line = self._format_metrics(metrics, level)
+        print(line)
 
+        # Алерты печатаем всегда, если они есть — они важны
         for a in alerts:
             print(f"    [!] {a['type']:10} {a['src_ip'] or '-':<15} {a['details']}")
 

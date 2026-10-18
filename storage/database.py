@@ -9,7 +9,6 @@ from config import DATABASE_PATH
 
 
 def init_db():
-    """Создаёт таблицы, если они ещё не существуют."""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
@@ -22,7 +21,9 @@ def init_db():
             syn_ratio REAL,
             unique_src_ips INTEGER,
             top_src_ip TEXT,
-            top_src_pps REAL
+            top_src_pps REAL,
+            top_syn_ip TEXT,
+            top_syn_ratio REAL
         )
     """)
 
@@ -42,14 +43,14 @@ def init_db():
 
 
 def save_metrics(metrics: dict):
-    """Сохраняет агрегированные метрики за интервал."""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO metrics
-            (total_pps, total_bps, syn_ratio, unique_src_ips, top_src_ip, top_src_pps)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (total_pps, total_bps, syn_ratio, unique_src_ips,
+             top_src_ip, top_src_pps, top_syn_ip, top_syn_ratio)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             metrics.get("total_pps"),
@@ -58,6 +59,8 @@ def save_metrics(metrics: dict):
             metrics.get("unique_src_ips"),
             metrics.get("top_src_ip"),
             metrics.get("top_src_pps"),
+            metrics.get("top_syn_ip"),
+            metrics.get("top_syn_ratio"),
         ),
     )
     conn.commit()

@@ -47,6 +47,9 @@ class TrafficAggregator:
         self.tcp_total = 0
         self.tcp_syn = 0
         self.udp_dst_ports = Counter()
+        # Новые счётчики — для SYN-ratio по источнику
+        self.src_tcp = Counter()
+        self.src_syn = Counter()
 
     def add_packet(self, features: dict):
         """Принимает признаки одного пакета и обновляет счётчики."""
@@ -60,8 +63,15 @@ class TrafficAggregator:
             if features["protocol"] == "TCP":
                 self.tcp_total += 1
                 flags = features.get("tcp_flags") or ""
-                if "S" in flags:
+                is_syn = "S" in flags
+                if is_syn:
                     self.tcp_syn += 1
+
+                src = features["src_ip"]
+                self.src_tcp[src] += 1
+                if is_syn:
+                    self.src_syn[src] += 1
+
             elif features["protocol"] == "UDP":
                 dport = features.get("dst_port")
                 if dport is not None:
@@ -87,6 +97,13 @@ class TrafficAggregator:
         else:
             top_udp_port, top_udp_pps = None, 0.0
 
+        if self.src_syn:
+            top_syn_ip, top_syn_count = self.src_syn.most_common(1)[0]
+            top_syn_total = self.src_tcp.get(top_syn_ip, 0)
+            top_syn_ratio = top_syn_count / top_syn_total if top_syn_total else 0.0
+        else:
+            top_syn_ip, top_syn_count, top_syn_ratio = None, 0, 0.0
+
         return {
             "timestamp": datetime.now(),
             "total_pps": total_pps,
@@ -98,6 +115,9 @@ class TrafficAggregator:
             "top_src_pps": top_pps,
             "top_udp_port": top_udp_port,
             "top_udp_pps": top_udp_pps,
+            "top_syn_ip": top_syn_ip,
+            "top_syn_count": top_syn_count,
+            "top_syn_ratio": top_syn_ratio,
         }
 
     # ---------- Правила ----------
@@ -119,19 +139,20 @@ class TrafficAggregator:
                 }
             )
 
-        # Правило 2: высокая доля SYN среди TCP (признак SYN Flood)
+        # Правило 2: SYN Flood от одного источника
         if (
-            metrics["tcp_total"] >= 10
-            and metrics["syn_ratio"] > THRESHOLDS["syn_ratio"]
+            metrics["top_syn_ip"]
+            and metrics["top_syn_count"] >= 10
+            and metrics["top_syn_ratio"] > THRESHOLDS["syn_ratio"]
         ):
             alerts.append(
                 {
                     "type": "SYN_FLOOD",
-                    "src_ip": metrics["top_src_ip"],
+                    "src_ip": metrics["top_syn_ip"],
                     "details": (
-                        f"SYN ratio={metrics['syn_ratio']:.1%} "
+                        f"SYN ratio={metrics['top_syn_ratio']:.1%} "
                         f"(порог {THRESHOLDS['syn_ratio']:.0%}), "
-                        f"TCP={metrics['tcp_total']}"
+                        f"SYN={metrics['top_syn_count']} от одного источника"
                     ),
                 }
             )
@@ -200,6 +221,8 @@ class TrafficAggregator:
                 parts.append(f"BPS={metrics['total_bps'] / 1024:>8.1f}KB/s")
             elif field == "syn":
                 parts.append(f"SYN={metrics['syn_ratio']:>5.1%}")
+            elif field == "syn_top":
+                parts.append(f"SYNtop={metrics['top_syn_ratio']:>5.1%}")
             elif field == "uniq":
                 parts.append(f"uniq={metrics['unique_src_ips']:>3}")
             elif field == "top":

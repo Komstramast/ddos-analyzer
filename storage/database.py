@@ -23,7 +23,8 @@ def init_db():
             top_src_ip TEXT,
             top_src_pps REAL,
             top_syn_ip TEXT,
-            top_syn_ratio REAL
+            top_syn_ratio REAL,
+            entropy REAL             -- НОВОЕ ПОЛЕ
         )
     """)
 
@@ -49,8 +50,8 @@ def save_metrics(metrics: dict):
         """
         INSERT INTO metrics
             (total_pps, total_bps, syn_ratio, unique_src_ips,
-             top_src_ip, top_src_pps, top_syn_ip, top_syn_ratio)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             top_src_ip, top_src_pps, top_syn_ip, top_syn_ratio, entropy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
             metrics.get("total_pps"),
@@ -61,6 +62,7 @@ def save_metrics(metrics: dict):
             metrics.get("top_src_pps"),
             metrics.get("top_syn_ip"),
             metrics.get("top_syn_ratio"),
+            metrics.get("entropy"),  # НОВОЕ
         ),
     )
     conn.commit()

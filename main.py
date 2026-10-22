@@ -75,7 +75,17 @@ def main():
     output_fields = None
     if args.show:
         output_fields = [f.strip() for f in args.show.split(",") if f.strip()]
-        valid = {"time", "pps", "bps", "syn", "syn_top", "uniq", "top", "udp"}
+        valid = {
+            "time",
+            "pps",
+            "bps",
+            "syn",
+            "syn_top",
+            "uniq",
+            "top",
+            "udp",
+            "entropy",
+        }
         unknown = set(output_fields) - valid
         if unknown:
             print(f"Ошибка: неизвестные поля вывода: {unknown}")

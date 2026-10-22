@@ -10,6 +10,7 @@
 Агрегация работает в фоновом потоке, чтобы не блокировать захват пакетов.
 """
 
+import math
 import threading
 from collections import Counter
 from datetime import datetime
@@ -104,6 +105,13 @@ class TrafficAggregator:
         else:
             top_syn_ip, top_syn_count, top_syn_ratio = None, 0, 0.0
 
+        # Расчёт энтропии Шеннона по IP-источникам
+        entropy = 0.0
+        if self.total_packets > 0:
+            for count in self.src_packets.values():
+                p = count / self.total_packets
+                entropy -= p * math.log2(p)
+
         return {
             "timestamp": datetime.now(),
             "total_pps": total_pps,
@@ -118,6 +126,7 @@ class TrafficAggregator:
             "top_syn_ip": top_syn_ip,
             "top_syn_count": top_syn_count,
             "top_syn_ratio": top_syn_ratio,
+            "entropy": entropy,
         }
 
     # ---------- Правила ----------
@@ -174,6 +183,24 @@ class TrafficAggregator:
                 }
             )
 
+        # Правило 4: Распределённая атака (ботнет)
+        if (
+            metrics["unique_src_ips"] >= THRESHOLDS["unique_ips_min"]
+            and metrics["entropy"] >= THRESHOLDS["entropy_min"]
+            and metrics["total_pps"] > THRESHOLDS["pps_per_ip"]
+        ):
+            alerts.append(
+                {
+                    "type": "DISTRIBUTED_FLOOD",
+                    "src_ip": "MULTIPLE",
+                    "details": (
+                        f"Энтропия={metrics['entropy']:.2f} (порог {THRESHOLDS['entropy_min']}), "
+                        f"уникальных IP={metrics['unique_src_ips']}, "
+                        f"PPS={metrics['total_pps']:.1f}"
+                    ),
+                }
+            )
+
         return alerts
 
     def _threat_level(self, metrics: dict, alerts: list) -> str:
@@ -184,6 +211,12 @@ class TrafficAggregator:
         🔴 red    — атака (много алертов или превышение порогов)
         """
         from config import THREAT_LEVEL, THRESHOLDS
+
+        # Красный: любая распределённая атака или много алертов
+        if any(a["type"] == "DISTRIBUTED_FLOOD" for a in alerts):
+            return "red"
+        if len(alerts) >= THREAT_LEVEL["red_alerts"]:
+            return "red"
 
         # Красный: много алертов
         if len(alerts) >= THREAT_LEVEL["red_alerts"]:
@@ -231,6 +264,8 @@ class TrafficAggregator:
             elif field == "udp":
                 port = metrics["top_udp_port"] or "-"
                 parts.append(f"udp={port} ({metrics['top_udp_pps']:.1f}pps)")
+            elif field == "entropy":
+                parts.append(f"ent={metrics['entropy']:>5.2f}")
 
         prefix = ""
         if SHOW_THREAT_LEVEL:

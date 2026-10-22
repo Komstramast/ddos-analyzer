@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>DDoS Traffic Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #1a1d21; color: #e9ecef; }
+        .card { background-color: #212529; border-color: #343a40; }
+        .status-indicator { font-size: 4rem; line-height: 1; transition: all 0.3s; }
+        .alert-row { font-size: 0.85rem; }
+        .text-green { color: #198754; }
+        .text-yellow { color: #ffc107; }
+        .text-red { color: #dc3545; }
+    </style>
+</head>
+<body>
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <!-- Индикатор -->
+        <div class="col-md-3">
+            <div class="card text-center p-3">
+                <h5 class="text-muted">Статус системы</h5>
+                <div id="status-icon" class="status-indicator text-green">🟢</div>
+                <h4 id="status-text" class="mt-2">Норма</h4>
+            </div>
+        </div>
+        <!-- Метрики -->
+        <div class="col-md-9">
+            <div class="card p-3 h-100 d-flex flex-row justify-content-around align-items-center">
+                <div class="text-center">
+                    <h6 class="text-muted">Текущий PPS</h6>
+                    <h2 id="val-pps" class="text-info">0</h2>
+                </div>
+                <div class="text-center">
+                    <h6 class="text-muted">Уникальных IP</h6>
+                    <h2 id="val-uniq" class="text-warning">0</h2>
+                </div>
+                <div class="text-center">
+                    <h6 class="text-muted">Энтропия</h6>
+                    <h2 id="val-entropy" class="text-success">0.0</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- График -->
+        <div class="col-md-8">
+            <div class="card p-3">
+                <h5>Интенсивность трафика (PPS)</h5>
+                <canvas id="trafficChart" height="100"></canvas>
+            </div>
+        </div>
+        <!-- Лента алертов -->
+        <div class="col-md-4">
+            <div class="card p-3" style="height: 350px; overflow-y: auto;">
+                <h5>Последние события</h5>
+                <table class="table table-dark table-sm table-hover mt-2">
+                    <tbody id="alerts-body">
+                        <tr><td class="text-muted text-center">Нет событий</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,4 +1,3 @@
-// Инициализация графика
 const ctx = document.getElementById('trafficChart').getContext('2d');
 const chart = new Chart(ctx, {
     type: 'line',
@@ -7,43 +6,64 @@ const chart = new Chart(ctx, {
         datasets: [{
             label: 'PPS (пакетов/сек)',
             data: [],
-            borderColor: '#0dcaf0',
-            backgroundColor: 'rgba(13, 202, 240, 0.1)',
+            borderColor: '#3498db', /* Яркий синий */
+            backgroundColor: 'rgba(52, 152, 219, 0.2)',
             borderWidth: 2,
             fill: true,
-            tension: 0.3,
-            pointRadius: 0
+            tension: 0.4,
+            pointRadius: 2,
+            pointHoverRadius: 6
         }]
     },
     options: {
         responsive: true,
+        maintainAspectRatio: false, // <--- ДОБАВИТЬ ЭТУ СТРОКУ
         animation: false,
+        interaction: { mode: 'index', intersect: false },
         scales: {
-            x: { display: false },
-            y: { beginAtZero: true, grid: { color: '#343a40' } }
+            x: { 
+                display: false 
+            },
+            y: { 
+                beginAtZero: true, 
+                grid: { color: '#333' },
+                ticks: { color: '#9e9e9e' }
+            }
         },
-        plugins: { legend: { display: false } }
+        plugins: { 
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#1e1e1e',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: '#333',
+                borderWidth: 1
+            }
+        }
     }
 });
 
-// Функция обновления данных
 async function updateDashboard() {
     try {
-        // 1. Обновляем статус и цифры
+        // 1. Статус
         const statusRes = await fetch('/api/status');
         const status = await statusRes.json();
         
         const icon = document.getElementById('status-icon');
         const text = document.getElementById('status-text');
         
-        if (status.level === 'green') { icon.innerText = '🟢'; icon.className = 'status-indicator text-green'; text.innerText = 'Норма'; }
-        else if (status.level === 'yellow') { icon.innerText = '🟡'; icon.className = 'status-indicator text-yellow'; text.innerText = 'Внимание'; }
-        else { icon.innerText = '🔴'; icon.className = 'status-indicator text-red'; text.innerText = 'АТАКА'; }
+        if (status.level === 'green') { 
+            icon.innerText = '🟢'; icon.className = 'status-indicator text-green'; text.innerText = 'Норма'; 
+        } else if (status.level === 'yellow') { 
+            icon.innerText = '🟡'; icon.className = 'status-indicator text-yellow'; text.innerText = 'Внимание'; 
+        } else { 
+            icon.innerText = '🔴'; icon.className = 'status-indicator text-red'; text.innerText = 'АТАКА'; 
+        }
 
         document.getElementById('val-pps').innerText = status.pps.toFixed(0);
         document.getElementById('val-uniq').innerText = status.unique_ips;
 
-        // 2. Обновляем график
+        // 2. График
         const metricsRes = await fetch('/api/metrics');
         const metrics = await metricsRes.json();
         
@@ -52,24 +72,23 @@ async function updateDashboard() {
             chart.data.datasets[0].data = metrics.map(m => m.total_pps);
             chart.update();
 
-            // Выводим энтропию последней секунды
             const last = metrics[metrics.length - 1];
             document.getElementById('val-entropy').innerText = last.entropy ? last.entropy.toFixed(2) : '0.00';
         }
 
-        // 3. Обновляем ленту алертов
+        // 3. Алерты
         const alertsRes = await fetch('/api/alerts');
         const alerts = await alertsRes.json();
         const tbody = document.getElementById('alerts-body');
         
         if (alerts.length === 0) {
-            tbody.innerHTML = '<tr><td class="text-muted text-center">Нет событий</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" class="text-muted text-center py-3">Нет событий</td></tr>';
         } else {
             tbody.innerHTML = alerts.map(a => `
                 <tr class="alert-row">
-                    <td class="text-muted">${a.timestamp.split(' ')[1]}</td>
-                    <td class="text-danger fw-bold">${a.alert_type}</td>
-                    <td>${a.src_ip}</td>
+                    <td class="text-light text-opacity-75" style="font-size: 0.8rem;">${a.timestamp.split(' ')[1]}</td>
+                    <td class="fw-bold" style="color: #e74c3c; font-size: 0.85rem;">${a.alert_type}</td>
+                    <td class="text-light" style="font-size: 0.85rem;">${a.src_ip}</td>
                 </tr>
             `).join('');
         }
@@ -78,6 +97,6 @@ async function updateDashboard() {
     }
 }
 
-// Запускаем каждые 2 секунды
-setInterval(updateDashboard, 2000);
+// Запускаем чаще, чтобы график был живее (раз в секунду)
+setInterval(updateDashboard, 1000);
 updateDashboard();
